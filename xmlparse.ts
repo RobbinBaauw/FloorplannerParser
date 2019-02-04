@@ -13,11 +13,11 @@ fs.readFile("./sources/test.xml", "utf8", (err, xml) => {
             const cuboids = Cuboid.parseCuboid(lines);
             const polygons = Polygon.parsePolygons(areas);
 
-            const shapes: Shape[] = [...cuboids];
+            const shapes: Shape[] = [...cuboids, ...polygons];
 
-            for (let i = 0; i < shapes.length; i++) {
-                const currShape = shapes[i];
-                currShape.setIds(i);
+            let counter = 0;
+            for (const shape of shapes) {
+                counter += shape.setIds(counter);
             }
 
             shapes.sort((a, b) => {
@@ -49,16 +49,18 @@ abstract class Shape {
     public abstract getVertices(): Vertex[];
     public abstract getFaces(): Face[];
 
-    public setIds(currIterator: number) {
+    public setIds(currIterator: number): number {
         this.currIterator = currIterator;
 
-        const startId = (currIterator * 8) + 1;
+        const startId = currIterator + 1;
 
         for (let i = 0; i < this.getVertices().length; i++) {
             const currVertex = this.getVertices()[i];
 
             currVertex.setId(startId + i);
         }
+
+        return this.getVertices().length;
     }
 
     public getVerticesString(): string {
@@ -97,6 +99,8 @@ class Cuboid extends Shape{
         const cuboids: Cuboid[] = [];
 
         for (const line of lines) {
+            if (line.type[0] !== "default_wall") continue;
+
             const splitPoints = line.points[0].split(",");
 
             const points = [];
@@ -238,45 +242,15 @@ class Polygon extends Shape{
                 vertices.push(vertex);
             }
 
-            // polygons.push(Polygon.getPolygonFromVertices(vertices, 0.1));
+            polygons.push(Polygon.getPolygonFromVertices(vertices));
         }
 
         return polygons;
     }
 
-    public static getPolygonFromVertices(vertices: Vertex[], thickness: number): Polygon {
+    public static getPolygonFromVertices(vertices: Vertex[]): Polygon {
 
-        const newVertices: Vertex[] = [...vertices];
-        const faces: Face[] = [];
-
-        const lowerFace = new Face(vertices);
-        faces.push(lowerFace);
-
-        // for (let i = 0; i < vertices.length; i += 2) {
-        //     const currVertex = vertices[i % vertices.length];
-        //     const nextVertex = vertices[(i + 1) % vertices.length];
-        //
-        //     const secondVertex = new Vertex(currVertex.x, currVertex.y, thickness);
-        //     const fourthVertex = new Vertex(nextVertex.x, nextVertex.y, thickness);
-        //
-        //     newVertices.push(secondVertex, fourthVertex);
-        //
-        //     faces.push(new Face([currVertex, secondVertex, nextVertex, fourthVertex]))
-        // }
-        //
-        // const upperVertices: Vertex[] = [];
-        // for (const vertex of lowerFace.getVertices()) {
-        //     const copied = vertex.copy();
-        //     copied.z = thickness;
-        //     upperVertices.push(copied);
-        // }
-        //
-        // newVertices.push(...upperVertices);
-        //
-        // const upperFace = new Face(upperVertices);
-        // faces.push(upperFace);
-
-        return new Polygon(newVertices, faces);
+        return new Polygon(vertices, [new Face(vertices)]);
     }
 
     public getFaces(): Face[] {
