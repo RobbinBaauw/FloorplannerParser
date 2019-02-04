@@ -10,51 +10,29 @@ fs.readFile("./sources/test.xml", "utf8", (err, xml) => {
             const areas = floor.designs[0].design[0].areas[0].area;
             const lines = floor.designs[0].design[0].lines[0].line;
 
-            const cuboids: Cuboid[] = [];
+            const cuboids = Cuboid.parseCuboid(lines);
+            const polygons = Polygon.parsePolygons(areas);
 
-            for (const line of lines) {
-                const splitPoints = line.points[0].split(",");
+            const shapes: Shape[] = [...cuboids];
 
-                const points = [];
-
-                for (const point of splitPoints) {
-                    points.push(...point.split(" "))
-                }
-
-                const vertices: Vertex[] = [];
-
-                for (let i = 0; i < points.length; i += 3) {
-                    const x = parseFloat(points[i]);
-                    const y = parseFloat(points[i + 1]);
-                    const z = parseFloat(points[i + 2]);
-
-                    const vertex = new Vertex(x, y , z);
-                    vertices.push(vertex);
-                }
-
-                const thickness = line.thickness[0];
-
-                cuboids.push(Cuboid.getCuboidFromVertices(vertices, thickness));
+            for (let i = 0; i < shapes.length; i++) {
+                const currShape = shapes[i];
+                currShape.setIds(i);
             }
 
-            for (let i = 0; i < cuboids.length; i++) {
-                const currCuboid = cuboids[i];
-                currCuboid.setIds(i);
-            }
-
-            cuboids.sort((a, b) => {
+            shapes.sort((a, b) => {
                 return a.getIterator() - b.getIterator();
             });
 
             let objString = "";
-            for (const cuboid of cuboids) {
-                objString += cuboid.getVerticesString();
+            for (const shape of shapes) {
+                objString += shape.getVerticesString();
             }
 
             objString += "\n";
 
-            for (const cuboid of cuboids) {
-                objString += cuboid.getFacesString();
+            for (const shape of shapes) {
+                objString += shape.getFacesString();
             }
 
             fs.writeFileSync(`sources/floor_${floor.name[0]}.obj`, objString);
@@ -64,19 +42,20 @@ fs.readFile("./sources/test.xml", "utf8", (err, xml) => {
     });
 });
 
-class Cuboid {
+abstract class Shape {
 
     private currIterator: number;
 
-    constructor(private vertices: Vertex[], private faces: Face[]) {}
+    public abstract getVertices(): Vertex[];
+    public abstract getFaces(): Face[];
 
     public setIds(currIterator: number) {
         this.currIterator = currIterator;
 
         const startId = (currIterator * 8) + 1;
 
-        for (let i = 0; i < this.vertices.length; i++) {
-            const currVertex = this.vertices[i];
+        for (let i = 0; i < this.getVertices().length; i++) {
+            const currVertex = this.getVertices()[i];
 
             currVertex.setId(startId + i);
         }
@@ -84,7 +63,7 @@ class Cuboid {
 
     public getVerticesString(): string {
         let string = "";
-        for (const vertex of this.vertices) {
+        for (const vertex of this.getVertices()) {
             string += vertex.getVertexText();
             string += "\n";
         }
@@ -94,7 +73,7 @@ class Cuboid {
 
     public getFacesString(): string {
         let string = "";
-        for (const vertex of this.faces) {
+        for (const vertex of this.getFaces()) {
             string += vertex.getFaceText();
             string += "\n";
         }
@@ -104,6 +83,45 @@ class Cuboid {
 
     public getIterator(): number {
         return this.currIterator;
+    }
+}
+
+class Cuboid extends Shape{
+
+
+    constructor(private vertices: Vertex[], private faces: Face[]) {
+        super();
+    }
+
+    public static parseCuboid(lines: any): Cuboid[] {
+        const cuboids: Cuboid[] = [];
+
+        for (const line of lines) {
+            const splitPoints = line.points[0].split(",");
+
+            const points = [];
+
+            for (const point of splitPoints) {
+                points.push(...point.split(" "))
+            }
+
+            const vertices: Vertex[] = [];
+
+            for (let i = 0; i < points.length; i += 3) {
+                const x = parseFloat(points[i]);
+                const y = parseFloat(points[i + 1]);
+                const z = parseFloat(points[i + 2]);
+
+                const vertex = new Vertex(x, y , z);
+                vertices.push(vertex);
+            }
+
+            const thickness = line.thickness[0];
+
+            cuboids.push(Cuboid.getCuboidFromVertices(vertices, thickness));
+        }
+
+        return cuboids;
     }
 
     public static getCuboidFromVertices(vertices: Vertex[], thickness: number): Cuboid {
@@ -181,17 +199,112 @@ class Cuboid {
         }
     }
 
+    public getFaces(): Face[] {
+        return this.faces;
+    }
+
+    public getVertices(): Vertex[] {
+        return this.vertices;
+    }
+
+}
+
+class Polygon extends Shape{
+
+    constructor(private vertices: Vertex[], private faces: Face[]) {
+        super();
+    }
+
+    public static parsePolygons(areas: any) {
+        const polygons: Polygon[] = [];
+
+        for (const area of areas) {
+            const splitPoints = area.points[0].split(",");
+
+            const points = [];
+
+            for (const point of splitPoints) {
+                points.push(...point.split(" "))
+            }
+
+            const vertices: Vertex[] = [];
+
+            for (let i = 0; i < points.length; i += 3) {
+                const x = parseFloat(points[i]);
+                const y = parseFloat(points[i + 1]);
+                const z = parseFloat(points[i + 2]);
+
+                const vertex = new Vertex(x, y , z);
+                vertices.push(vertex);
+            }
+
+            // polygons.push(Polygon.getPolygonFromVertices(vertices, 0.1));
+        }
+
+        return polygons;
+    }
+
+    public static getPolygonFromVertices(vertices: Vertex[], thickness: number): Polygon {
+
+        const newVertices: Vertex[] = [...vertices];
+        const faces: Face[] = [];
+
+        const lowerFace = new Face(vertices);
+        faces.push(lowerFace);
+
+        // for (let i = 0; i < vertices.length; i += 2) {
+        //     const currVertex = vertices[i % vertices.length];
+        //     const nextVertex = vertices[(i + 1) % vertices.length];
+        //
+        //     const secondVertex = new Vertex(currVertex.x, currVertex.y, thickness);
+        //     const fourthVertex = new Vertex(nextVertex.x, nextVertex.y, thickness);
+        //
+        //     newVertices.push(secondVertex, fourthVertex);
+        //
+        //     faces.push(new Face([currVertex, secondVertex, nextVertex, fourthVertex]))
+        // }
+        //
+        // const upperVertices: Vertex[] = [];
+        // for (const vertex of lowerFace.getVertices()) {
+        //     const copied = vertex.copy();
+        //     copied.z = thickness;
+        //     upperVertices.push(copied);
+        // }
+        //
+        // newVertices.push(...upperVertices);
+        //
+        // const upperFace = new Face(upperVertices);
+        // faces.push(upperFace);
+
+        return new Polygon(newVertices, faces);
+    }
+
+    public getFaces(): Face[] {
+        return this.faces;
+    }
+
+    public getVertices(): Vertex[] {
+        return this.vertices;
+    }
 }
 
 class Face {
     constructor(private vertices: Vertex[]) {
-        if (vertices.length !== 4) {
-            throw new TypeError("Face constructor");
-        }
+    }
+
+    public getVertices(): Vertex[] {
+        return this.vertices;
     }
 
     public getFaceText(): string {
-        return `f ${this.vertices[0].getId()} ${this.vertices[1].getId()} ${this.vertices[2].getId()} ${this.vertices[3].getId()}`
+
+        let faceText = "f";
+
+        for (const vertex of this.vertices) {
+            faceText += ` ${vertex.getId()}`;
+        }
+
+        return faceText;
     }
 }
 
@@ -207,6 +320,10 @@ class Vertex {
 
     public getId(): number {
         return this.id;
+    }
+
+    public copy(): Vertex {
+        return new Vertex(this.x, this.y, this.z);
     }
 
     public getVertexText(): string {
