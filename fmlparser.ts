@@ -1,7 +1,7 @@
 import {parseString} from "xml2js";
 import * as fs from "fs";
 
-fs.readFile("./sources/test.xml", "utf8", (err, xml) => {
+fs.readFile("./sources/house.fml", "utf8", (err, xml) => {
     parseString(xml, function (err, result) {
         const floors = result.project.floors;
 
