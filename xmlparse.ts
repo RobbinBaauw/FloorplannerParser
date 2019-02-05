@@ -48,6 +48,7 @@ abstract class Shape {
 
     public abstract getVertices(): Vertex[];
     public abstract getFaces(): Face[];
+    public abstract getType(): string;
 
     public setIds(currIterator: number): number {
         this.currIterator = currIterator;
@@ -74,7 +75,7 @@ abstract class Shape {
     }
 
     public getFacesString(): string {
-        let string = "";
+        let string = `o ${this.getType()}_${this.currIterator}\n`;
         for (const vertex of this.getFaces()) {
             string += vertex.getFaceText();
             string += "\n";
@@ -170,6 +171,7 @@ class Cuboid extends Shape{
             }
         }
 
+        // After exporting a cube this seemed the best order
         const v000 = new Vertex(xLeft, yDown, zDown);
         const v100 = new Vertex(xRight, yDown, zDown);
         const v010 = new Vertex(xLeft, yUp, zDown);
@@ -209,6 +211,10 @@ class Cuboid extends Shape{
 
     public getVertices(): Vertex[] {
         return this.vertices;
+    }
+
+    public getType(): string {
+        return "wall";
     }
 
 }
@@ -259,6 +265,10 @@ class Polygon extends Shape{
 
     public getVertices(): Vertex[] {
         return this.vertices;
+    }
+
+    public getType(): string {
+        return "polygon";
     }
 }
 
