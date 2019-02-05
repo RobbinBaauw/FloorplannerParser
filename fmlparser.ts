@@ -6,11 +6,12 @@ fs.readFile("./sources/house.fml", "utf8", (err, xml) => {
         const floors = result.project.floors;
 
         for (const floor of floors[0].floor) {
-
             const areas = floor.designs[0].design[0].areas[0].area;
             const lines = floor.designs[0].design[0].lines[0].line;
 
             const cuboids = Cuboid.parseCuboid(lines);
+            Cuboid.alterSize(cuboids);
+
             const polygons = Polygon.parsePolygons(areas);
 
             const shapes: Shape[] = [...cuboids, ...polygons];
@@ -89,11 +90,92 @@ abstract class Shape {
     }
 }
 
+type matchingCuboidType = {
+    cuboid: Cuboid,
+    cuboidVertex: Vertex,
+    myVertex: Vertex,
+    myOtherVertex: Vertex
+}
+
 class Cuboid extends Shape{
 
 
-    constructor(private vertices: Vertex[], private faces: Face[]) {
+    constructor(private vertices: Vertex[], private faces: Face[], private thickness: number, private yChanges: boolean, private originalVertices: Vertex[]) {
         super();
+    }
+
+    public static alterSize(cuboids: Cuboid[]) {
+        for (const cuboid of cuboids) {
+
+            const matchingCuboids = this.findMatchingCuboid(cuboids, cuboid);
+
+            if (matchingCuboids !== null) {
+                for (const matchingCuboid of matchingCuboids) {
+                    const halfSize = matchingCuboid.cuboid.getThickness() / 2;
+
+                    const myVertices = cuboid.getVertices();
+
+                    if (cuboid.getYChanges()) {
+                        const toBeUpdatedVertices = myVertices.filter(vertex => vertex.y === matchingCuboid.myVertex.y);
+
+                        if (matchingCuboid.myVertex.y > matchingCuboid.myOtherVertex.y) {
+                            toBeUpdatedVertices.map(vertex => vertex.y += halfSize);
+                        } else {
+                            toBeUpdatedVertices.map(vertex => vertex.y -= halfSize);
+                        }
+                    } else {
+                        const toBeUpdatedVertices = myVertices.filter(vertex => vertex.x === matchingCuboid.myVertex.x);
+
+                        if (matchingCuboid.myVertex.x > matchingCuboid.myOtherVertex.x) {
+                            toBeUpdatedVertices.map(vertex => vertex.x += halfSize);
+                        } else {
+                            toBeUpdatedVertices.map(vertex => vertex.x -= halfSize);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static findMatchingCuboid(cuboids: Cuboid[], currCuboid: Cuboid): matchingCuboidType[] {
+        const firstVertex = currCuboid.getOriginalVertices()[0];
+        const secondVertex = currCuboid.getOriginalVertices()[1];
+
+        const neighbours: matchingCuboidType[] = [];
+
+        for (const cuboid of cuboids) {
+            const currFirstVertex = cuboid.getOriginalVertices()[0];
+            const currSecondVertex = cuboid.getOriginalVertices()[1];
+
+            if (firstVertex.x === currFirstVertex.x && firstVertex.y === currFirstVertex.y) {
+                neighbours.push({cuboid, cuboidVertex: currFirstVertex, myVertex: firstVertex, myOtherVertex: secondVertex});
+            } else if (firstVertex.x === currSecondVertex.x && firstVertex.y === currSecondVertex.y) {
+                neighbours.push({cuboid, cuboidVertex: currSecondVertex, myVertex: firstVertex, myOtherVertex: secondVertex});
+            } else if (secondVertex.x === currFirstVertex.x && secondVertex.y === currFirstVertex.y) {
+                neighbours.push({cuboid, cuboidVertex: currFirstVertex, myVertex: secondVertex, myOtherVertex: firstVertex});
+            } else if (secondVertex.x === currSecondVertex.x && secondVertex.y === currSecondVertex.y) {
+                neighbours.push({cuboid, cuboidVertex: currSecondVertex, myVertex: secondVertex, myOtherVertex: firstVertex});
+            }
+        }
+
+        if (neighbours.length === 0) {
+            return [];
+        } else if (neighbours.length === 1) {
+            return [neighbours[0]];
+        } else {
+            const correctPoints: matchingCuboidType[] = [];
+            for (const neighbour of neighbours) {
+                const myVertex = neighbour.myVertex;
+                const otherpoints = neighbours.filter(currNeighbour => (currNeighbour.myVertex.x === myVertex.x) && (currNeighbour.myVertex.y === myVertex.y));
+                if (otherpoints.length === 1) {
+                    if (otherpoints[0].cuboid.getYChanges() !== currCuboid.getYChanges()) {
+                        correctPoints.push(otherpoints[0]);
+                    }
+                }
+            }
+
+            return correctPoints;
+        }
     }
 
     public static parseCuboid(lines: any): Cuboid[] {
@@ -129,7 +211,7 @@ class Cuboid extends Shape{
         return cuboids;
     }
 
-    public static getCuboidFromVertices(vertices: Vertex[], thickness: number): Cuboid {
+    private static getCuboidFromVertices(vertices: Vertex[], thickness: number): Cuboid {
         if (vertices.length !== 4) {
             throw new TypeError("Vertex length invalid");
         }
@@ -148,38 +230,15 @@ class Cuboid extends Shape{
         const yUpOriginal = (!yChanges ? first.y + addToSides : fourth.y);
         const zDown = 0;
 
-        let xLeft = xLeftOriginal;
-        let xRight = xRightOriginal;
-        let yDown = yDownOriginal;
-        let yUp = yUpOriginal;
-
-        if (yChanges) {
-            if (yUp >= yDown) {
-                yUp += addToSides;
-                yDown -= addToSides;
-            } else {
-                yUp -= addToSides;
-                yDown += addToSides;
-            }
-        } else {
-            if (xRight >= xLeft) {
-                xRight += addToSides;
-                xLeft -= addToSides;
-            } else {
-                xRight -= addToSides;
-                xLeft += addToSides;
-            }
-        }
-
         // After exporting a cube this seemed the best order
-        const v000 = new Vertex(xLeft, yDown, zDown);
-        const v100 = new Vertex(xRight, yDown, zDown);
-        const v010 = new Vertex(xLeft, yUp, zDown);
-        const v110 = new Vertex(xRight, yUp, zDown);
-        const v001 = new Vertex(xLeft, yDown, this.getHeight(yChanges, vertices, xLeftOriginal, yDownOriginal));
-        const v101 = new Vertex(xRight, yDown, this.getHeight(yChanges, vertices, xRightOriginal, yDownOriginal));
-        const v011 = new Vertex(xLeft, yUp, this.getHeight(yChanges, vertices, xLeftOriginal, yUpOriginal));
-        const v111 = new Vertex(xRight, yUp, this.getHeight(yChanges, vertices, xRightOriginal, yUpOriginal));
+        const v000 = new Vertex(xLeftOriginal, yDownOriginal, zDown);
+        const v100 = new Vertex(xRightOriginal, yDownOriginal, zDown);
+        const v010 = new Vertex(xLeftOriginal, yUpOriginal, zDown);
+        const v110 = new Vertex(xRightOriginal, yUpOriginal, zDown);
+        const v001 = new Vertex(xLeftOriginal, yDownOriginal, this.getHeight(yChanges, vertices, xLeftOriginal, yDownOriginal));
+        const v101 = new Vertex(xRightOriginal, yDownOriginal, this.getHeight(yChanges, vertices, xRightOriginal, yDownOriginal));
+        const v011 = new Vertex(xLeftOriginal, yUpOriginal, this.getHeight(yChanges, vertices, xLeftOriginal, yUpOriginal));
+        const v111 = new Vertex(xRightOriginal, yUpOriginal, this.getHeight(yChanges, vertices, xRightOriginal, yUpOriginal));
 
         const f1 = new Face([v101, v111, v011, v001]);
         const f2 = new Face([v100, v110, v111, v101]);
@@ -188,7 +247,7 @@ class Cuboid extends Shape{
         const f5 = new Face([v111, v110, v010, v011]);
         const f6 = new Face([v100, v101, v001, v000]);
 
-        return new Cuboid([v000, v100, v010, v110, v001, v101, v011, v111], [f1, f2, f3, f4, f5, f6]);
+        return new Cuboid([v000, v100, v010, v110, v001, v101, v011, v111], [f1, f2, f3, f4, f5, f6], thickness, yChanges, vertices);
     }
 
     private static getHeight(yChanges: boolean, vertices: Vertex[], currX: number, currY: number): number {
@@ -203,6 +262,18 @@ class Cuboid extends Shape{
         } else {
             return vertices[3].z;
         }
+    }
+
+    public getOriginalVertices(): Vertex[] {
+        return this.originalVertices;
+    }
+
+    public getThickness(): number {
+        return this.thickness;
+    }
+
+    public getYChanges(): boolean {
+        return this.yChanges;
     }
 
     public getFaces(): Face[] {
@@ -229,6 +300,8 @@ class Polygon extends Shape{
         const polygons: Polygon[] = [];
 
         for (const area of areas) {
+            if (area.type[0] !== "generated_area") continue;
+
             const splitPoints = area.points[0].split(",");
 
             const points = [];
@@ -254,7 +327,7 @@ class Polygon extends Shape{
         return polygons;
     }
 
-    public static getPolygonFromVertices(vertices: Vertex[]): Polygon {
+    private static getPolygonFromVertices(vertices: Vertex[]): Polygon {
 
         return new Polygon(vertices, [new Face(vertices)]);
     }
